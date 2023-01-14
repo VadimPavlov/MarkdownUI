@@ -4,6 +4,9 @@ final class ResizableImageAttachment: NSTextAttachment {
   #if os(iOS) || os(tvOS)
     typealias NSRect = CGRect
   #endif
+    
+    var width: CGFloat?
+    var height: CGFloat?
 
   override func attachmentBounds(
     for textContainer: NSTextContainer?,
@@ -21,8 +24,8 @@ final class ResizableImageAttachment: NSTextAttachment {
     }
 
     let aspectRatio = image.size.width / image.size.height
-    let width = min(lineFrag.width, image.size.width)
-    let height = width / aspectRatio
+    let width = self.width ?? min(lineFrag.width, image.size.width)
+    let height = self.height ?? width / aspectRatio
 
     return NSRect(x: 0, y: 0, width: width, height: height)
   }
