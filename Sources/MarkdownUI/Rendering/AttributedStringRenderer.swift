@@ -389,7 +389,8 @@ extension AttributedStringRenderer {
   }
 
     struct FontInline {
-        let color: UIColor
+        var font: MarkdownStyle.Font?
+        var color: UIColor?
         var children: [Inline]
     }
     
@@ -399,15 +400,15 @@ extension AttributedStringRenderer {
     var strong: Strong?
     var emphasis: Emphasis?
     var underline: [Inline]?
-    var font: FontInline?
+    var inlineFont: FontInline?
       
       func append(inline: Inline) {
           if strong != nil {
               strong?.children.append(inline)
           } else if emphasis != nil {
               emphasis?.children.append(inline)
-          } else if font != nil {
-              font?.children.append(inline)
+          } else if inlineFont != nil {
+              inlineFont?.children.append(inline)
           } else if underline != nil {
               underline?.append(inline)
           } else {
@@ -415,7 +416,21 @@ extension AttributedStringRenderer {
           }
       }
       
+      func renderInlineFont() {
+          guard let font = inlineFont else { return }
+          var state = state
+          if let color = font.color {
+              state.foregroundColor = Color(color)
+          }
+          if let f = font.font {
+              state.font = f
+          }
+          result.append(renderInlines(font.children, state: state))
+          inlineFont = nil
+      }
+      
     for inline in inlines {
+        print(inline)
         if case .text(let text) = inline {
             switch text {
             case "**": strong = Strong(children: [])
@@ -437,7 +452,7 @@ extension AttributedStringRenderer {
                     result.append(renderEmphasis($0, state: state))
                     emphasis = nil
                 }
-
+                
             case "<b>": strong = Strong(children: [])
             case "</b>":
                 strong.map {
@@ -454,28 +469,39 @@ extension AttributedStringRenderer {
                     result.append(string)
                     underline = nil
                 }
-            case "</font>":
-                font.map {
-                    var state = state
-                    state.foregroundColor = Color($0.color)
-                    result.append(renderInlines($0.children, state: state))
-                    font = nil
-                }
-                
+            case "</font>", "</span>":
+                renderInlineFont()
             default:
-                if innerHTML.html.hasPrefix("<font") {
-                    let colorName = innerHTML.html.regex(pattern: #"(?<=color=\")[^"]+"#).first ?? ""
+                let html = innerHTML.html
+                if html.hasPrefix("<font") {
+                    let colorName = html.regex(pattern: #"(?<=color=\")[^"]+"#).first ?? ""
                     let color = UIColor(name: colorName) ?? UIColor(hexString: colorName)
-                    font = color.map { FontInline(color: $0, children: []) }
-                } else {
+                    inlineFont = color.map { FontInline(color: $0, children: []) }
+                } else if html.hasPrefix("<span") {
+                    let colorName = html.regex(pattern: #"(?<=color:)[^;]+"#).first ?? ""
+                    let fontName = html.regex(pattern: "(?<=font-family:)[^;]+").first
+                    let fontSize = html.regex(pattern: "(?<=font-size:)\\d+").first
                     
-                    result.append(renderInline(inline, state: state))
+                    let color = UIColor(name: colorName) ?? UIColor(hexString: colorName)
+                    
+                    let stateFont = state.font.resolve(sizeCategory: environment.sizeCategory)
+                    let size = fontSize.flatMap { Int($0).map { CGFloat($0)}} ?? stateFont.pointSize
+                    let name = fontName ?? stateFont.fontName
+                    let font = MarkdownStyle.Font.custom(name, size: size)
+                    
+                    inlineFont = FontInline(font: font, color: color, children: [])
+                }
+                else {
+                    result.append(renderInlineHTML(innerHTML, state: state))
                 }
             }
         } else {
             append(inline: inline)
         }
     }
+    
+    // there might be no closing </span>, so we check here
+    renderInlineFont()
 
     return result
   }
@@ -567,19 +593,20 @@ extension AttributedStringRenderer {
           } else {
               return renderEmphasis(Emphasis(value), state: state)
           }
-      } else if html.hasPrefix("<span") && inlineHTML.html.contains("style=") {
-          let icon = html.regex(pattern: #"(?<=class=\")[^"]+"#).first
-          let fontName = html.regex(pattern: "(?<=font-family:)[^;]+").first
-          let fontSize = html.regex(pattern: "(?<=font-size:)\\d+").first
-          
-          let stateFont = state.font.resolve(sizeCategory: environment.sizeCategory)
-          let size = fontSize.flatMap { Int($0).map { CGFloat($0)}} ?? stateFont.pointSize
-          let font = fontName.flatMap { UIFont(name: $0, size: size) } ?? stateFont
-          return NSAttributedString(string: icon ?? "",
-                                    attributes: [.font: font, .foregroundColor: PlatformColor(state.foregroundColor)])
-      } else if html == "</span>" {
-          return NSAttributedString(string: "")
-      } else if html.contains("<img") {
+      }
+//      else if html.hasPrefix("<span class") {
+//          let icon = html.regex(pattern: #"(?<=class=\")[^"]+"#).first
+//          let fontName = html.regex(pattern: "(?<=font-family:)[^;]+").first
+//          let fontSize = html.regex(pattern: "(?<=font-size:)\\d+").first
+//          let stateFont = state.font.resolve(sizeCategory: environment.sizeCategory)
+//          let size = fontSize.flatMap { Int($0).map { CGFloat($0)}} ?? stateFont.pointSize
+//          let font = fontName.flatMap { UIFont(name: $0, size: size) } ?? stateFont
+//          return NSAttributedString(string: icon ?? "",
+//                                    attributes: [.font: font, .foregroundColor: PlatformColor(state.foregroundColor)])
+//      } else if html == "</span>" {
+//          return NSAttributedString(string: "")
+//      }
+      else if html.contains("<img") {
           let src = html.regex(pattern: #"(?<=src=)[^> ]+"#).first?.replacingOccurrences(of: "\"", with: "")
           let alt = html.regex(pattern: #"(?<=alt=\")[^"]+"#).first
           let width = html.regex(pattern: "(?<=width=)\\d+").first
@@ -731,8 +758,17 @@ public extension String {
     }
 }
 
-extension UIColor {
-    public convenience init?(hexString: String) {
+public extension UIColor {
+    
+    func hexString() -> String {
+        let components = self.cgColor.components
+        let r = components?[0] ?? 0
+        let g = components?[1] ?? 0
+        let b = components?[2] ?? 0
+        return String(format: "%02lX%02lX%02lX", lroundf(Float(r * 255)), lroundf(Float(g * 255)), lroundf(Float(b * 255)))
+     }
+    
+    convenience init?(hexString: String) {
         let hex = hexString.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int = UInt64()
         Scanner(string: hex).scanHexInt64(&int)
@@ -750,7 +786,7 @@ extension UIColor {
         self.init(red: CGFloat(r) / 255, green: CGFloat(g) / 255, blue: CGFloat(b) / 255, alpha: CGFloat(a) / 255)
     }
 
-    public convenience init?(name: String) {
+    convenience init?(name: String) {
         let allColors = [
             "aliceblue": "#F0F8FFFF",
             "antiquewhite": "#FAEBD7FF",
