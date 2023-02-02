@@ -299,10 +299,10 @@ extension AttributedStringRenderer {
     ) -> NSAttributedString {
         let result = renderParagraphEdits(state: state)
         result.append(renderInlines(paragraph.text, state: state))
-        
-        result.addAttribute(
-            .paragraphStyle, value: paragraphStyle(state: state), range: NSRange(0..<result.length)
-        )
+        if result.attribute(.paragraphStyle, at: 0, effectiveRange: nil) == nil {
+            let range = NSRange(0..<result.length)
+            result.addAttribute(.paragraphStyle, value: paragraphStyle(state: state), range: range)
+        }
         
         if hasSuccessor {
             result.append(string: .paragraphSeparator)
@@ -334,6 +334,37 @@ extension AttributedStringRenderer {
             value: paragraphStyle(state: paragraphState),
             range: NSRange(0..<result.length)
         )
+        
+        if hasSuccessor {
+            result.append(string: .paragraphSeparator)
+        }
+        
+        return result
+    }
+    
+    private func renderInlineHeading(
+        _ heading: InlineHeading,
+        hasSuccessor: Bool,
+        state: State
+    ) -> NSAttributedString {
+        let result = renderParagraphEdits(state: state)
+        
+        var inlineState = state
+        inlineState.font = inlineState.font.bold().scale(
+            environment.style.measurements.headingScales[heading.level - 1]
+        )
+        
+        result.append(heading.rendered { renderInlines($0, state: inlineState)})
+        
+        // The paragraph spacing is relative to the parent font
+        var paragraphState = state
+        paragraphState.paragraphSpacing = environment.style.measurements.headingSpacing
+        
+        let range = NSRange(0..<result.length)
+        result.addAttribute(.paragraphStyle, value: paragraphStyle(state: paragraphState), range: range)
+        if let color = heading.color {
+            result.addAttribute(.foregroundColor, value: color, range: range)
+        }
         
         if hasSuccessor {
             result.append(string: .paragraphSeparator)
@@ -395,114 +426,15 @@ extension AttributedStringRenderer {
         return result
     }
     
-    struct InlineStyle {
-        var font: MarkdownStyle.Font?
-        var color: UIColor?
-        var children: [Inline]
-    }
-    
-    struct InlineTable {
-        let columns: Int
-        var width: [CGFloat]
-        var children: [[NSAttributedString]] = [[]]
-        
-        enum Alignment {
-            case leading
-            case center
-            case trailing
-        }
-        
-        init(columns: Int) {
-            self.columns = columns
-            self.width = Array(repeating: 0, count: columns)
-        }
-        
-        mutating func setWidth(_ newWidth: CGFloat, column: Int) {
-            let old = width[column]
-            width[column] = max(old, newWidth)
-        }
-        
-        var currentColumn: Int {
-            let line = children.last
-            let column = line?.count ?? 0
-            return column % columns
-        }
-        
-        var alignments: [Alignment] {
-            guard children.count > 1 else { return [] }
-            let alignments = children[1]
-            return alignments.map {
-                let prefix = $0.string.hasPrefix(":")
-                let suffix = $0.string.hasSuffix(":")
-                if prefix && suffix {
-                    return .center
-                } else if suffix {
-                    return .trailing
-                } else {
-                    return .leading
-                }
-            }
-        }
-        
-        mutating func nextLine() {
-            children.append([])
-        }
-        
-        mutating func append(row: NSAttributedString) {
-            let column = currentColumn
-            setWidth(row.size().width, column: column)
-            if column < columns {
-                var line = children.removeLast()
-                line.append(row)
-                children.append(line)
-            } else {
-                children.append([row])
-            }
-        }
-        
-        mutating func append(rows: [NSAttributedString]) {
-            guard !rows.isEmpty else { return }
-            let column = currentColumn
-            rows.enumerated().forEach { idx, row in
-                setWidth(row.size().width, column: column + idx)
-            }
-            
-            let line = children.removeLast()
-            children.append(line + rows)
-        }
-    }
-    
     private func renderInlines(_ inlines: [Inline], state: State) -> NSMutableAttributedString {
         let result = NSMutableAttributedString()
         
-        var heading: Heading?
-        var headingStyle: InlineStyle?
-        
-        var strong: Strong?
-        var emphasis: Emphasis?
-        var underline: [Inline]?
-        var link: CommonMark.Link?
-        
-        var inlineFont: [InlineStyle] = []
+        var parents: [Parent] = []
         var inlineTable: InlineTable?
         var inlineRow = NSMutableAttributedString()
         
         func append(inline: Inline) {
-            if link != nil {
-                link?.children.append(inline)
-            } else if strong != nil {
-                strong?.children.append(inline)
-            } else if emphasis != nil {
-                emphasis?.children.append(inline)
-            } else if !inlineFont.isEmpty {
-                var font = inlineFont.removeLast()
-                font.children.append(inline)
-                inlineFont.append(font)
-            } else if underline != nil {
-                underline?.append(inline)
-            } else if heading != nil {
-                heading?.text.append(inline)
-            } else {
+            if parents.isEmpty {
                 if inlineTable == nil {
                     let render = renderInline(inline, state: state)
                     result.append(render)
@@ -512,109 +444,139 @@ extension AttributedStringRenderer {
                     let render = renderInlines([inline], state: state)
                     inlineRow.append(render)
                 }
+            } else {
+                parents.indices.last.map {
+                    parents[$0].inlines.append(.inline(inline))
+                }
             }
         }
         
-        func renderInlineFont() {
-            if inlineFont.isEmpty { return }
-            
-            let font = inlineFont.removeLast()
-            var state = state
-            if let color = font.color {
-                state.foregroundColor = Color(color)
-            }
-            if let f = font.font {
-                state.font = f
-            }
-            let render = renderInlines(font.children, state: state)
-            if inlineTable == nil {
-                result.append(render)
+        func render<P: Parent>(string: (P) -> NSAttributedString) {
+            if let p = parents.removeLast() as? P {
+                let rendered = string(p)
+                if parents.isEmpty {
+                    result.append(rendered)
+                } else {
+                    parents.indices.last.map {
+                        parents[$0].inlines.append(.render(rendered))
+                    }
+                }
             } else {
-                inlineRow.append(render)
+                fatalError("REMOVED WRONG THING")
             }
+        }
+                
+        func renderInlineFont() {
+            if let style = parents.last as? InlineStyle {
+                let rendered = NSMutableAttributedString(attributedString: style.rendered { renderInlines($0, state: state) })
+                let range = NSRange(0..<rendered.length)
+                if let color = style.color {
+                    rendered.addAttribute(.foregroundColor, value: color, range: range)
+                }
+                if let font = style.font {
+                    let platformFont = font.resolve(sizeCategory: environment.sizeCategory)
+                    rendered.addAttribute(.font, value: platformFont, range: range)
+                }
+
+                parents.removeLast()
+                if parents.isEmpty {
+                    if inlineTable == nil {
+                        result.append(rendered)
+                    } else {
+                        inlineRow.append(rendered)
+                    }
+                } else {
+                    parents.indices.last.map {
+                        parents[$0].inlines.append(.render(rendered))
+                    }
+                }
+            } else if !parents.isEmpty {
+                fatalError("Last is not a style")
+            }
+        }
+        
+        func inlineStyle() -> InlineStyle? {
+            for p in parents.reversed() {
+                if let style = p as? InlineStyle {
+                    return style
+                }
+            }
+            return nil
         }
         
         for inline in inlines {
             if case .text(let text) = inline {
-                switch text {
-                case "**": strong = Strong(children: [])
-                case "** ": strong = Strong(children: [])
-                case " **":
-                    strong.map {
-                        result.append(renderStrong($0, state: state))
-                        strong = nil
-                    }
-                default:
-                    lazy var tableValues = text
-                        .trimmingCharacters(in: .whitespaces)
-                        .components(separatedBy: String.tableSeparator)
+                // check for table
+                lazy var tableValues = text
+                    .trimmingCharacters(in: .whitespaces)
+                    .components(separatedBy: String.tableSeparator)
+                
+                if text.hasPrefix(.tableSeparator) && text.hasSuffix(.tableSeparator) && inlineTable == nil {
+                    let columns = tableValues.count - 2
+                    inlineTable = InlineTable(columns: columns)
+                }
+            
+                if inlineTable != nil, let range = text.range(of: String.tableSeparator), !range.isEmpty  {
+                    let alignments = inlineTable?.alignments ?? []
+                    let column = inlineTable?.currentColumn ?? 0
+                    var values = tableValues.filter { !$0.isEmpty }
                     
-                    if text.hasPrefix(.tableSeparator) && text.hasSuffix(.tableSeparator) && inlineTable == nil {
-                        let columns = tableValues.count - 2
-                        inlineTable = InlineTable(columns: columns)
+                    // check if we have unclosed <span>, apply it to a first element (until column)
+                    
+                    if parents.last is InlineStyle {
+                        let first = values.removeFirst()
+                        parents.indices.last.map {
+                            parents[$0].inlines.append(.inline(.text(first)))
+                        }
+                        renderInlineFont()
                     }
                     
-                    if inlineTable != nil, let range = text.range(of: String.tableSeparator), !range.isEmpty  {
-                        let alignments = inlineTable?.alignments ?? []
-                        let column = inlineTable?.currentColumn ?? 0
-                        var values = tableValues.filter { !$0.isEmpty }
-                        
-                        // check if we have unclosed <span>, apply it to a first element (until column)
-                        if !inlineFont.isEmpty, !values.isEmpty {
-                            let first = values.removeFirst()
-                            inlineFont.indices.last.map {
-                                inlineFont[$0].children.append(.text(first))
-                            }
-                            renderInlineFont()
-                        }
-                        
-                        // check if we append to a complex table cell
-                        if !inlineRow.string.isEmpty {
-                            inlineTable?.append(row: inlineRow)
-                            inlineRow = NSMutableAttributedString()
-                        }
-                        
-                        let rows = values.enumerated().map { idx, value -> NSAttributedString in
-                            let position = idx + column
-                            let alignment = position < alignments.count ? alignments[position] : .leading
-                            let text = alignment == .center ? value : value.trimmingCharacters(in: .whitespaces)
-                            return renderText(text, state: state)
-                        }
-                        inlineTable?.append(rows: rows)
-                    } else {
-                        append(inline: inline)
+                    // check if we append to a complex table cell
+                    if !inlineRow.string.isEmpty {
+                        inlineTable?.append(row: inlineRow)
+                        inlineRow = NSMutableAttributedString()
                     }
+                    
+                    let rows = values.enumerated().map { idx, value -> NSAttributedString in
+                        let position = idx + column
+                        let alignment = position < alignments.count ? alignments[position] : .leading
+                        let text = alignment == .center ? value : value.trimmingCharacters(in: .whitespaces)
+                        return renderText(text, state: state)
+                    }
+                    inlineTable?.append(rows: rows)
+                } else {
+                    append(inline: inline)
                 }
             }
             else if case .html(let innerHTML) = inline {
                 switch innerHTML.html {
-                case "<i>": emphasis = Emphasis(children: [])
-                case "</i>":
-                    emphasis.map {
-                        result.append(renderEmphasis($0, state: state))
-                        emphasis = nil
-                    }
-                    
-                case "<b>", "<strong>": strong = Strong(children: [])
-                case "</b>", "</strong>":
-                    strong.map {
-                        result.append(renderStrong($0, state: state))
-                        strong = nil
-                    }
-                case "<u>": underline = []
+                case "<i>": parents.append(Emphasis(children: []))
+                case "</i>": render { renderEmphasis($0, state: state) }
+                case "<b>", "<strong>": parents.append(Strong(children: []))
+                case "</b>", "</strong>": render { renderStrong($0, state: state) }
+                case "<u>":
+                    parents.append(InlineUnderline(inlines: []))
                 case "</u>":
-                    underline.map {
-                        let string = renderInlines($0, state: state)
-                        let range = NSRange(location: 0, length: string.length)
-                        string.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
-                        result.append(string)
-                        underline = nil
+                    render { (underline: InlineUnderline) in
+                        let rendered = underline.rendered { renderInlines($0, state: state) }
+                        let range = NSRange(0..<rendered.length)
+                        rendered.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+                        return rendered
+                    }
+                case "<center>":
+                    let style = NSMutableParagraphStyle()
+                    style.alignment = .center
+                    let paragraph = InlineParagraph(style: style, inlines: [])
+                    parents.append(paragraph)
+                case "</center>":
+                    render { (paragraph: InlineParagraph) in
+                        let rendered = paragraph.rendered { renderInlines($0, state: state)}
+                        let range = NSRange(0..<rendered.length)
+                        rendered.addAttribute(.paragraphStyle, value: paragraph.style, range: range)
+                        return rendered
                     }
                 case "</a>":
-                    link.map {
-                        result.append(renderLink($0, state: state))
-                        link = nil
-                    }
+                    render { renderLink($0, state: state) }
                 case "</font>", "</span>":
                     renderInlineFont()
                 default:
@@ -624,25 +586,17 @@ extension AttributedStringRenderer {
                         // opening heading
                         let style = html.regex(pattern: #"(?<=style=)[^>]+"#).first ?? ""
                         let colorName = style.regex(pattern: #"(?<=color:)[^;]+"#).first ?? ""
-                        heading = Heading(text: [], level: level)
-                        if let color = UIColor.from(html: colorName) {
-                            headingStyle = .init(color: color, children: [])
-                        }
+                        let color = UIColor.from(html: colorName)
+                        let heading = InlineHeading(level: level, color: color, inlines: [])
+                        parents.append(heading)
                     } else if html.regex(pattern: #"</h\d>"#).first != nil {
-                        // closing heading
-                        heading.map {
-                            var newState = state
-                            if let color = headingStyle?.color {
-                                newState.foregroundColor = Color(color)
-                            }
-                            result.append(renderHeading($0, hasSuccessor: false, state: newState))
-                            heading = nil
-                            headingStyle = nil
-                        }
+                        // close heading
+                        render { renderInlineHeading($0, hasSuccessor: false, state: state) }
                     } else if html.hasPrefix("<font") {
                         let colorName = html.regex(pattern: #"(?<=color=\")[^"]+"#).first ?? ""
                         if let color = UIColor.from(html: colorName) {
-                            inlineFont.append(InlineStyle(color: color, children: []))
+                            let style = InlineStyle(color: color, inlines: [])
+                            parents.append(style)
                         }
                     } else if html.hasPrefix("<span") {
                         
@@ -653,7 +607,7 @@ extension AttributedStringRenderer {
                         let color = UIColor.from(html: colorName)
                         
                         let font: MarkdownStyle.Font?
-                        let stateFont = inlineFont.last?.font ?? state.font
+                        let stateFont = inlineStyle()?.font ?? state.font
                         let pointSize = stateFont.resolve(sizeCategory: environment.sizeCategory).pointSize
                         let size = fontSize.flatMap { Int($0).map { CGFloat($0)}}
                         
@@ -667,13 +621,14 @@ extension AttributedStringRenderer {
                         } else {
                             font = nil
                         }
-                        inlineFont.append(InlineStyle(font: font, color: color, children: []))
+                        let style = InlineStyle(font: font, color: color, inlines: [])
+                        parents.append(style)
                     } else if html.hasPrefix("<a ") {
                         let href = html.regex(pattern: #"(?<=href=")[^"]+"#).first ?? ""
                         let url = URL(string: href)
-                        link = Link.init(children: [], url: url)
+                        parents.append(Link(children: [], url: url))
                     } else {
-                        result.append(renderInlineHTML(innerHTML, state: state))
+                        append(inline: .html(innerHTML))
                     }
                 }
             } else {
@@ -775,7 +730,15 @@ extension AttributedStringRenderer {
     private func renderInlineCode(_ inlineCode: InlineCode, state: State) -> NSAttributedString {
         var state = state
         state.font = state.font.scale(environment.style.measurements.codeFontScale).monospaced()
-        return renderText(inlineCode.code, state: state)
+        
+        return NSAttributedString(
+                string: inlineCode.code,
+                attributes: [
+                    .font: state.font.resolve(sizeCategory: environment.sizeCategory),
+                    .foregroundColor: PlatformColor(hexString: "c7254e")!,
+                    .backgroundColor: PlatformColor(hexString: "f9f2f4")!
+                ]
+        )
     }
     
     private func renderInlineHTML(_ inlineHTML: InlineHTML, state: State) -> NSAttributedString {
@@ -820,13 +783,6 @@ extension AttributedStringRenderer {
             } else {
                 return renderEmphasis(Emphasis(value), state: state)
             }
-        } else if html.hasPrefix("<center>") {
-            let value = regex(for: "center").first ?? ""
-            let result = NSMutableAttributedString(attributedString: renderValue(value))
-            let style = NSMutableParagraphStyle()
-            style.alignment = .center
-            result.addAttribute(.paragraphStyle, value: style, range: NSRange(0..<result.length))
-            return result
         } else if html.contains("<img") {
             let src = html.regex(pattern: #"(?<=src=)[^> ]+"#).first?.replacingOccurrences(of: "\"", with: "")
             let alt = html.regex(pattern: #"(?<=alt=\")[^"]+"#).first
@@ -891,7 +847,7 @@ extension AttributedStringRenderer {
             } ?? NSAttributedString()
     }
     
-    private func paragraphStyle(state: State) -> NSParagraphStyle {
+    private func paragraphStyle(state: State) -> NSMutableParagraphStyle {
         let pointSize = state.font.resolve(sizeCategory: environment.sizeCategory).pointSize
         let result = NSMutableParagraphStyle()
         result.setParagraphStyle(.default)

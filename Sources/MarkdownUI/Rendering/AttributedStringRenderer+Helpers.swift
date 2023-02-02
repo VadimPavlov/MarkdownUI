@@ -1,6 +1,151 @@
 import UIKit
 
-public extension String {
+protocol Parent {
+    var inlines: [Inlinable] { get set }
+}
+extension Parent {
+    func rendered(with render: ([Inline]) -> NSAttributedString) -> NSMutableAttributedString {
+        let result = NSMutableAttributedString()
+        inlines.forEach { i in
+            switch i {
+            case .inline(let inline):
+                result.append(render([inline]))
+            case .render(let render):
+                result.append(render)
+            }
+        }
+        return result
+    }
+}
+
+extension Strong: Parent {
+    var inlines: [Inlinable] {
+        get { children.map { .inline($0)} }
+        set { children = newValue.compactMap { $0.inlineUnwrapped } }
+    }
+}
+extension Emphasis: Parent {
+    var inlines: [Inlinable] {
+        get { children.map { .inline($0)} }
+        set { children = newValue.compactMap { $0.inlineUnwrapped } }
+    }
+
+}
+extension CommonMark.Link: Parent {
+    var inlines: [Inlinable] {
+        get { children.map { .inline($0)} }
+        set { children = newValue.compactMap { $0.inlineUnwrapped } }
+    }
+}
+
+enum Inlinable {
+    case inline(Inline)
+    case render(NSAttributedString)
+    
+    var inlineUnwrapped: Inline? {
+        if case .inline(let inline) = self {
+            return inline
+        }
+        return nil
+    }
+}
+
+
+struct InlineStyle: Parent {
+    var font: MarkdownStyle.Font?
+    var color: UIColor?
+    var inlines: [Inlinable]
+}
+
+struct InlineHeading: Parent {
+    let level: Int
+    var color: UIColor?
+    var inlines: [Inlinable]
+}
+
+struct InlineParagraph: Parent {
+    let style: NSParagraphStyle
+    var inlines: [Inlinable]
+}
+struct InlineUnderline: Parent {
+    var inlines: [Inlinable]
+}
+
+struct InlineTable {
+    let columns: Int
+    var width: [CGFloat]
+    var children: [[NSAttributedString]] = [[]]
+    
+    enum Alignment {
+        case leading
+        case center
+        case trailing
+    }
+    
+    init(columns: Int) {
+        self.columns = columns
+        self.width = Array(repeating: 0, count: columns)
+    }
+    
+    mutating func setWidth(_ newWidth: CGFloat, column: Int) {
+        let old = width[column]
+        width[column] = max(old, newWidth)
+    }
+    
+    var currentColumn: Int {
+        let line = children.last
+        let column = line?.count ?? 0
+        return column % columns
+    }
+    
+    var alignments: [Alignment] {
+        guard children.count > 1 else { return [] }
+        let alignments = children[1]
+        return alignments.map {
+            let prefix = $0.string.hasPrefix(":")
+            let suffix = $0.string.hasSuffix(":")
+            if prefix && suffix {
+                return .center
+            } else if suffix {
+                return .trailing
+            } else {
+                return .leading
+            }
+        }
+    }
+    
+    mutating func nextLine() {
+        children.append([])
+    }
+    
+    mutating func append(row: NSAttributedString) {
+        let column = currentColumn
+        setWidth(row.size().width, column: column)
+        if column < columns {
+            var line = children.removeLast()
+            line.append(row)
+            children.append(line)
+        } else {
+            children.append([row])
+        }
+    }
+    
+    mutating func append(rows: [NSAttributedString]) {
+        guard !rows.isEmpty else { return }
+        let column = currentColumn
+        rows.enumerated().forEach { idx, row in
+            setWidth(row.size().width, column: column + idx)
+        }
+        
+        let line = children.removeLast()
+        children.append(line + rows)
+    }
+}
+
+
+
+// MARK: - Extensions
+extension String {
     func regex(pattern: String) -> [String] {
         do {
             let string = self as NSString
@@ -26,21 +171,22 @@ public extension String {
     }
 }
 
+public extension CGColor {
+    func hexString() -> String {
+        let r = components?[0] ?? 0
+        let g = components?[1] ?? 0
+        let b = components?[2] ?? 0
+        return String(format: "%02lX%02lX%02lX", lroundf(Float(r * 255)), lroundf(Float(g * 255)), lroundf(Float(b * 255)))
+     }
+}
+
 public extension UIColor {
     
     static func from(html: String) -> UIColor? {
         html.isEmpty ? nil :
         UIColor(name: html) ?? UIColor(rgb: html) ?? UIColor(hexString: html)
     }
-    
-    func hexString() -> String {
-        let components = self.cgColor.components
-        let r = components?[0] ?? 0
-        let g = components?[1] ?? 0
-        let b = components?[2] ?? 0
-        return String(format: "%02lX%02lX%02lX", lroundf(Float(r * 255)), lroundf(Float(g * 255)), lroundf(Float(b * 255)))
-     }
-    
+        
     convenience init?(hexString: String) {
         let hex = hexString.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int = UInt64()
@@ -212,7 +358,6 @@ public extension UIColor {
         ]
 
         let cleanedName = name.replacingOccurrences(of: " ", with: "").lowercased()
-
         if let hexString = allColors[cleanedName] {
             self.init(hexString: hexString)
         } else {

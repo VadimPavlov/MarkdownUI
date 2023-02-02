@@ -4,7 +4,7 @@ extension AttributedStringRenderer {
   struct Environment: Hashable {
     let baseURL: URL?
     let baseWritingDirection: NSWritingDirection
-    let alignment: NSTextAlignment
+    var alignment: NSTextAlignment
     let lineSpacing: CGFloat
     let sizeCategory: ContentSizeCategory
     let style: MarkdownStyle
