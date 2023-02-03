@@ -18,19 +18,6 @@ extension Parent {
     }
 }
 
-extension Strong: Parent {
-    var inlines: [Inlinable] {
-        get { children.map { .inline($0)} }
-        set { children = newValue.compactMap { $0.inlineUnwrapped } }
-    }
-}
-extension Emphasis: Parent {
-    var inlines: [Inlinable] {
-        get { children.map { .inline($0)} }
-        set { children = newValue.compactMap { $0.inlineUnwrapped } }
-    }
-
-}
 extension CommonMark.Link: Parent {
     var inlines: [Inlinable] {
         get { children.map { .inline($0)} }
@@ -68,6 +55,10 @@ struct InlineParagraph: Parent {
     var inlines: [Inlinable]
 }
 struct InlineUnderline: Parent {
+    var inlines: [Inlinable]
+}
+
+struct InlineListItems: Parent {
     var inlines: [Inlinable]
 }
 

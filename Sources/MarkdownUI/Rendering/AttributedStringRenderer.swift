@@ -117,6 +117,8 @@ extension AttributedStringRenderer {
         return result
     }
     
+    
+    
     private func renderBulletList(
         _ bulletList: BulletList,
         hasSuccessor: Bool,
@@ -157,6 +159,49 @@ extension AttributedStringRenderer {
         
         return result
     }
+    
+    private func renderInlineListItems(
+        _ list: InlineListItems,
+        hasSuccessor: Bool,
+        state: State
+    ) -> NSAttributedString {
+        
+        var itemState = state
+        itemState.paragraphSpacing = 0
+        //bulletList.tight ? 0 : environment.style.measurements.paragraphSpacing
+        itemState.headIndent += environment.style.measurements.headIndentStep
+        itemState.tabStops.append(
+            contentsOf: [
+                .init(
+                    textAlignment: .trailing(environment.baseWritingDirection),
+                    location: itemState.headIndent - environment.style.measurements.listMarkerSpacing
+                ),
+                .init(textAlignment: .natural, location: itemState.headIndent),
+            ]
+        )
+        itemState.setListMarker(.disc)
+        
+        let result = list.rendered { self.renderInlines($0, state: itemState) }
+
+//        for (offset, item) in bulletList.items.enumerated() {
+//            result.append(
+//                renderListItem(
+//                    item,
+//                    listMarker: .disc,
+//                    parentParagraphSpacing: state.paragraphSpacing,
+//                    hasSuccessor: offset < bulletList.items.count - 1,
+//                    state: itemState
+//                )
+//            )
+//        }
+//
+        if hasSuccessor {
+            result.append(string: .paragraphSeparator)
+        }
+        
+        return result
+    }
+    
     
     private func renderOrderedList(
         _ orderedList: OrderedList,
@@ -299,7 +344,7 @@ extension AttributedStringRenderer {
     ) -> NSAttributedString {
         let result = renderParagraphEdits(state: state)
         result.append(renderInlines(paragraph.text, state: state))
-        if result.attribute(.paragraphStyle, at: 0, effectiveRange: nil) == nil {
+        if result.length > 0 && result.attribute(.paragraphStyle, at: 0, effectiveRange: nil) == nil {
             let range = NSRange(0..<result.length)
             result.addAttribute(.paragraphStyle, value: paragraphStyle(state: state), range: range)
         }
@@ -550,10 +595,6 @@ extension AttributedStringRenderer {
             }
             else if case .html(let innerHTML) = inline {
                 switch innerHTML.html {
-                case "<i>": parents.append(Emphasis(children: []))
-                case "</i>": render { renderEmphasis($0, state: state) }
-                case "<b>", "<strong>": parents.append(Strong(children: []))
-                case "</b>", "</strong>": render { renderStrong($0, state: state) }
                 case "<u>":
                     parents.append(InlineUnderline(inlines: []))
                 case "</u>":
@@ -756,33 +797,18 @@ extension AttributedStringRenderer {
             from.regex(pattern: "(?<=<\(tag)>).+?(?=</\(tag)>)")
         }
         
-        if html == "<br>" || html == "<br/>" {
+        if html == "<br>" || html == "<br/>" || html == "</br>" {
             return renderText(String.lineSeparator, state: state)
         } else if html.hasPrefix("<br>") {
             let value = html.components(separatedBy: "<br>").last ?? ""
             return renderValue(value)
         } else if html == "<hr/>" {
             return renderThematicBreak(hasSuccessor: false, state: state)
-        } else if html == "</style>" {
-            return renderText("", state: state)
         } else if html == "</p>" {
             return renderLineBreak(state: state)
-        } else if html.hasPrefix("<ul>") {
-            let value = regex(for: "ul").first ?? ""
-            let listItems = regex(from: value, for: "li")
-            let result = NSMutableAttributedString()
-            listItems.forEach { item in
-                result.append(renderText("• \(item)\n", state: state))
-            }
-            return result
-        } else if html.hasPrefix("<i>") {
-            let value = regex(for: "i").first ?? ""
-            let doc = try? Document(markdown: value)
-            if case .paragraph(let p) = doc?.blocks.first {
-                return renderEmphasis(Emphasis(children: p.text), state: state)
-            } else {
-                return renderEmphasis(Emphasis(value), state: state)
-            }
+        } else if html == "<ul>" || html == "</ul>" || html == "</li>" {
+            // <li></li> tags are transofrmed into bullet list
+            return renderText("", state: state)
         } else if html.contains("<img") {
             let src = html.regex(pattern: #"(?<=src=)[^> ]+"#).first?.replacingOccurrences(of: "\"", with: "")
             let alt = html.regex(pattern: #"(?<=alt=\")[^"]+"#).first
@@ -800,6 +826,10 @@ extension AttributedStringRenderer {
                 return renderValue(value)
             }
             return result
+        } else if html.hasPrefix("</") {
+            // ignore any inpropertly closed tag
+            print("INGORING TAG: \(html)")
+            return NSAttributedString(string: "")
         } else {
             assert(!html.hasPrefix("<"), "Unhandled html tag\n\(html)")
             return renderText(inlineHTML.html, state: state)
