@@ -497,7 +497,8 @@ extension AttributedStringRenderer {
         }
         
         func render<P: Parent>(string: (P) -> NSAttributedString) {
-            if let p = parents.removeLast() as? P {
+            let last = parents.removeLast()
+            if let p = last as? P {
                 let rendered = string(p)
                 if parents.isEmpty {
                     result.append(rendered)
@@ -507,7 +508,8 @@ extension AttributedStringRenderer {
                     }
                 }
             } else {
-                fatalError("REMOVED WRONG THING")
+                assertionFailure("⚠️ \(last) is not \(P.self) ⚠️")
+                render(string: string) // removing next
             }
         }
                 
@@ -535,8 +537,6 @@ extension AttributedStringRenderer {
                         parents[$0].inlines.append(.render(rendered))
                     }
                 }
-            } else if !parents.isEmpty {
-                fatalError("Last is not a style")
             }
         }
         
@@ -610,6 +610,7 @@ extension AttributedStringRenderer {
                     let paragraph = InlineParagraph(style: style, inlines: [])
                     parents.append(paragraph)
                 case "</center>":
+                    renderInlineFont()
                     render { (paragraph: InlineParagraph) in
                         let rendered = paragraph.rendered { renderInlines($0, state: state)}
                         let range = NSRange(0..<rendered.length)
@@ -831,7 +832,7 @@ extension AttributedStringRenderer {
             print("INGORING TAG: \(html)")
             return NSAttributedString(string: "")
         } else {
-            assert(!html.hasPrefix("<"), "Unhandled html tag\n\(html)")
+            //assert(!html.hasPrefix("<"), "Unhandled html tag\n\(html)")
             return renderText(inlineHTML.html, state: state)
         }
     }
