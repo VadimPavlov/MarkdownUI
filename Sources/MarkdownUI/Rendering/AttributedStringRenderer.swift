@@ -54,7 +54,39 @@ extension AttributedStringRenderer {
     private func renderBlocks(_ blocks: [Block], state: State) -> NSMutableAttributedString {
         let result = NSMutableAttributedString()
         
-        for (offset, block) in blocks.enumerated() {
+        var fixed: [Block] = []
+        blocks.forEach { block in
+            switch block {
+            case .html(let htmlBlock):
+                let html = htmlBlock.html
+                let text: [Inline]
+                if let doc = try? Document(markdown: "Paragraph" + html),
+                   case .paragraph(let p) = doc.blocks.first {
+                    text = Array(p.text.dropFirst())
+                } else {
+                    text = [.html(.init(html))]
+                }
+                
+                if case .paragraph(var paragraph) = fixed.last {
+                    paragraph.text.append(contentsOf: text)
+                    fixed[fixed.count - 1] = .paragraph(paragraph)
+                } else {
+                    let paragraphBlock = Block.paragraph(.init(text: text))
+                    fixed.append(paragraphBlock)
+                }
+            case .paragraph(let paragraph):
+                if case .paragraph(var previous) = fixed.last {
+                    previous.text.append(contentsOf: paragraph.text)
+                    fixed[fixed.count - 1] = .paragraph(previous)
+                } else {
+                    fixed.append(block)
+                }
+            default:
+                fixed.append(block)
+            }
+        }
+        
+        for (offset, block) in fixed.enumerated() {
             result.append(
                 renderBlock(block, hasSuccessor: offset < blocks.count - 1, state: state)
             )
@@ -497,6 +529,11 @@ extension AttributedStringRenderer {
         }
         
         func render<P: Parent>(string: (P) -> NSAttributedString) {
+            guard !parents.isEmpty else {
+                assertionFailure("⚠️ No parents⚠️");
+                return
+            }
+            
             let last = parents.removeLast()
             if let p = last as? P {
                 let rendered = string(p)
@@ -617,9 +654,13 @@ extension AttributedStringRenderer {
                         rendered.addAttribute(.paragraphStyle, value: paragraph.style, range: range)
                         return rendered
                     }
+                case "<small>":
+                    let font = state.font.scale(0.85)
+                    let style = InlineStyle(font: font, inlines: [])
+                    parents.append(style)
                 case "</a>":
                     render { renderLink($0, state: state) }
-                case "</font>", "</span>":
+                case "</font>", "</span>", "</small>":
                     renderInlineFont()
                 default:
                     let html = innerHTML.html
@@ -803,7 +844,7 @@ extension AttributedStringRenderer {
         } else if html.hasPrefix("<br>") {
             let value = html.components(separatedBy: "<br>").last ?? ""
             return renderValue(value)
-        } else if html == "<hr/>" {
+        } else if html == "<hr>" || html == "<hr/>" {
             return renderThematicBreak(hasSuccessor: false, state: state)
         } else if html == "</p>" {
             return renderLineBreak(state: state)
@@ -829,10 +870,9 @@ extension AttributedStringRenderer {
             return result
         } else if html.hasPrefix("</") {
             // ignore any inpropertly closed tag
-            print("INGORING TAG: \(html)")
+            assertionFailure("INGORING TAG: \(html)")
             return NSAttributedString(string: "")
         } else {
-            //assert(!html.hasPrefix("<"), "Unhandled html tag\n\(html)")
             return renderText(inlineHTML.html, state: state)
         }
     }
