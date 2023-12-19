@@ -76,6 +76,7 @@ extension AttributedStringRenderer {
                 }
             case .paragraph(let paragraph):
                 if case .paragraph(var previous) = fixed.last {
+                    previous.text.append(.text(.paragraphSeparator))
                     previous.text.append(contentsOf: paragraph.text)
                     fixed[fixed.count - 1] = .paragraph(previous)
                 } else {
@@ -86,7 +87,7 @@ extension AttributedStringRenderer {
             }
         }
         
-        for (offset, block) in fixed.enumerated() {
+        for (offset, block) in blocks.enumerated() {
             result.append(
                 renderBlock(block, hasSuccessor: offset < blocks.count - 1, state: state)
             )
@@ -632,7 +633,7 @@ extension AttributedStringRenderer {
             }
             else if case .html(let innerHTML) = inline {
                 switch innerHTML.html {
-                case "<u>":
+                case "<u>", "<del>":
                     parents.append(InlineUnderline(inlines: []))
                 case "</u>":
                     render { (underline: InlineUnderline) in
@@ -641,17 +642,32 @@ extension AttributedStringRenderer {
                         rendered.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
                         return rendered
                     }
+                case "</del>":
+                    render { (underline: InlineUnderline) in
+                        let rendered = underline.rendered { renderInlines($0, state: state) }
+                        let range = NSRange(0..<rendered.length)
+                        rendered.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+                        return rendered
+                    }
+                case "<p>":
+                    let style = NSMutableParagraphStyle()
+                    let paragraph = InlineParagraph(style: style, inlines: [])
+                    parents.append(paragraph)
                 case "<center>":
                     let style = NSMutableParagraphStyle()
                     style.alignment = .center
                     let paragraph = InlineParagraph(style: style, inlines: [])
                     parents.append(paragraph)
-                case "</center>":
+                case "</center>", "</p>":
                     renderInlineFont()
                     render { (paragraph: InlineParagraph) in
                         let rendered = paragraph.rendered { renderInlines($0, state: state)}
                         let range = NSRange(0..<rendered.length)
                         rendered.addAttribute(.paragraphStyle, value: paragraph.style, range: range)
+                        if innerHTML.html == "</p>" {
+                            rendered.insert(.init(string: .lineSeparator), at: 0)
+                            rendered.append(.init(string: .lineSeparator))
+                        }
                         return rendered
                     }
                 case "<small>":
@@ -854,8 +870,8 @@ extension AttributedStringRenderer {
         } else if html.contains("<img") {
             let src = html.regex(pattern: #"(?<=src=)[^> ]+"#).first?.replacingOccurrences(of: "\"", with: "")
             let alt = html.regex(pattern: #"(?<=alt=\")[^"]+"#).first
-            let width = html.regex(pattern: "(?<=width=)\\d+").first
-            let height = html.regex(pattern: "(?<=height=)\\d+").first
+            let width = html.regex(pattern: "(?<=width=\"?)\\d+").first
+            let height = html.regex(pattern: "(?<=height=\"?)\\d+").first
             let url: URL? = src.flatMap {
                 var c = URLComponents(string: $0)
                 c?.queryItems = [.init(name: "width", value: width), .init(name: "height", value: height)]
