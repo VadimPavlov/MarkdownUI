@@ -118,6 +118,9 @@ public struct Theme {
   /// The link style.
   public var link: TextStyle = EmptyTextStyle()
 
+  /// The underline style.
+  public var underline: TextStyle = UnderlineStyle(.single)
+    
   var headings = Array(
     repeating: BlockStyle<BlockConfiguration> { $0.label },
     count: 6

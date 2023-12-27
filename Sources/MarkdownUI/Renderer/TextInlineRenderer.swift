@@ -51,8 +51,8 @@ private struct TextInlineRenderer {
       self.renderText(content)
     case .softBreak:
       self.renderSoftBreak()
-    case .html(let content):
-      self.renderHTML(content)
+    case .html(let node, let children):
+      self.renderHTML(node, children: children)
     case .image(let source, _):
       self.renderImage(source)
     default:
@@ -79,16 +79,15 @@ private struct TextInlineRenderer {
     }
   }
 
-  private mutating func renderHTML(_ html: String) {
-    let tag = HTMLTag(html)
-
-    switch tag?.name.lowercased() {
-    case "br":
-      self.defaultRender(.lineBreak)
-      self.shouldSkipNextWhitespace = true
-    default:
-      self.defaultRender(.html(html))
-    }
+    private mutating func renderHTML(_ node: String, children: [InlineNode]) {                        
+//    let tag = HTMLTag(html)
+//    switch tag?.name.lowercased() {
+//    case "br":
+//      self.defaultRender(.lineBreak)
+//      self.shouldSkipNextWhitespace = true
+//    default:
+        self.defaultRender(.html(node, children: children))
+//    }
   }
 
   private mutating func renderImage(_ source: String) {

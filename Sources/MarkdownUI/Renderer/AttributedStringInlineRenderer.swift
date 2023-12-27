@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 extension InlineNode {
   func renderAttributedString(
@@ -40,18 +41,22 @@ private struct AttributedStringInlineRenderer {
       self.renderLineBreak()
     case .code(let content):
       self.renderCode(content)
-    case .html(let content):
-      self.renderHTML(content)
+    case .html(let node, let children):
+      self.renderHTML(node, children: children)
     case .emphasis(let children):
       self.renderEmphasis(children: children)
     case .strong(let children):
       self.renderStrong(children: children)
     case .strikethrough(let children):
       self.renderStrikethrough(children: children)
+    case .underline(let children):
+        self.renderUnderline(children: children)
     case .link(let destination, let children):
       self.renderLink(destination: destination, children: children)
     case .image(let source, let children):
       self.renderImage(source: source, children: children)
+    case .style(let style, let children):
+      self.renderStyle(style: style, children: children)
     }
   }
 
@@ -81,17 +86,28 @@ private struct AttributedStringInlineRenderer {
   private mutating func renderCode(_ code: String) {
     self.result += .init(code, attributes: self.textStyles.code.mergingAttributes(self.attributes))
   }
+    
+  private mutating func renderHTML(_ node: String, children: [InlineNode]) {
+      let savedAttributes = self.attributes
+      switch node {
+      case "u", "ins":
+          self.renderUnderline(children: children)
+      default:
+          for child in children {
+            self.render(child)
+          }
+      }
 
-  private mutating func renderHTML(_ html: String) {
-    let tag = HTMLTag(html)
-
-    switch tag?.name.lowercased() {
-    case "br":
-      self.renderLineBreak()
-      self.shouldSkipNextWhitespace = true
-    default:
-      self.renderText(html)
-    }
+      self.attributes = savedAttributes
+//    let tag = HTMLTag(html)
+//
+//    switch tag?.name.lowercased() {
+//    case "br":
+//      self.renderLineBreak()
+//      self.shouldSkipNextWhitespace = true
+//    default:
+//      self.renderText(html)
+//    }
   }
 
   private mutating func renderEmphasis(children: [InlineNode]) {
@@ -127,6 +143,18 @@ private struct AttributedStringInlineRenderer {
     self.attributes = savedAttributes
   }
 
+    private mutating func renderUnderline(children: [InlineNode]) {
+        let savedAttributes = self.attributes
+        self.attributes = self.textStyles.underline.mergingAttributes(self.attributes)
+
+        for child in children {
+          self.render(child)
+        }
+
+        self.attributes = savedAttributes
+    }
+
+    
   private mutating func renderLink(destination: String, children: [InlineNode]) {
     let savedAttributes = self.attributes
     self.attributes = self.textStyles.link.mergingAttributes(self.attributes)
@@ -141,6 +169,32 @@ private struct AttributedStringInlineRenderer {
 
   private mutating func renderImage(source: String, children: [InlineNode]) {
     // AttributedString does not support images
+  }
+    
+  private mutating func renderStyle(style: InlineStyle, children: [InlineNode]) {
+    let savedAttributes = self.attributes
+    
+    if let font = style.font {
+        self.attributes.fontProperties?.family = .custom(font)
+    }
+      
+    if let size = style.size {
+      self.attributes.fontProperties?.size = size
+    }
+      
+    if let html = style.foregroundColor, let color = Color.from(html: html) {
+      self.attributes.foregroundColor = color
+    }
+      
+    if let html = style.backgroundColor, let color = Color.from(html: html) {
+      self.attributes.backgroundColor = color
+    }
+    
+    for child in children {
+      self.render(child)
+    }
+
+    self.attributes = savedAttributes
   }
 }
 

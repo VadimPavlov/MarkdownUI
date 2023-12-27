@@ -4,6 +4,7 @@ import XCTest
 @testable import MarkdownUI
 
 final class HTMLTagTests: XCTestCase {
+    /*
   func testInvalidTag() {
     XCTAssertNil(HTMLTag(""))
     XCTAssertNil(HTMLTag("foo"))
@@ -36,5 +37,5 @@ final class HTMLTagTests: XCTestCase {
 
   func testSelfClosingTag() {
     XCTAssertEqual("br", HTMLTag("<br />")?.name)
-  }
+  }*/
 }

@@ -59,9 +59,10 @@ extension BlockNode {
     case .codeBlock:
       self = .codeBlock(fenceInfo: unsafeNode.fenceInfo, content: unsafeNode.literal ?? "")
     case .htmlBlock:
-      self = .htmlBlock(content: unsafeNode.literal ?? "")
+        let doc = HTMLDocument(string: unsafeNode.html)?.body
+        self = .htmlBlock(content: doc?.children.compactMap(InlineNode.init(htmlNode:)) ?? [])
     case .paragraph:
-      self = .paragraph(content: unsafeNode.children.compactMap(InlineNode.init(unsafeNode:)))
+        self = .paragraph(content: Self.inlines(unsafeNode: unsafeNode))
     case .heading:
       self = .heading(
         level: unsafeNode.headingLevel,
@@ -79,6 +80,19 @@ extension BlockNode {
       return nil
     }
   }
+    
+    static fileprivate func inlines(unsafeNode: UnsafeNode) -> [InlineNode] {
+        let children = unsafeNode.children
+        if children.contains(where: { $0.nodeType == .html }) {
+            if let doc = HTMLDocument(string: unsafeNode.html)?.body?.children.first {
+                return doc.children.compactMap(InlineNode.init(htmlNode:))
+            } else {
+                return []
+            }
+        } else {
+            return children.compactMap(InlineNode.init(unsafeNode:))
+        }
+    }
 }
 
 extension RawListItem {
@@ -132,7 +146,7 @@ extension InlineNode {
     case .code:
       self = .code(unsafeNode.literal ?? "")
     case .html:
-      self = .html(unsafeNode.literal ?? "")
+      self = .html(unsafeNode.literal ?? "", children: [])
     case .emphasis:
       self = .emphasis(children: unsafeNode.children.compactMap(InlineNode.init(unsafeNode:)))
     case .strong:
@@ -154,6 +168,44 @@ extension InlineNode {
       return nil
     }
   }
+    fileprivate init?(htmlNode: HTMLDocument.Node) {
+        if htmlNode.isTextNode {
+            self = .text(htmlNode.content ?? "")
+        } else if htmlNode.isElementNode {
+            let children = { htmlNode.children.compactMap(InlineNode.init(htmlNode:)) }
+            switch htmlNode.name {
+            case "br":
+                self = .lineBreak
+            case "b", "strong":
+                self = .strong(children: children())
+            case "i", "em":
+                self = .emphasis(children: children())
+            case "u", "ins":
+                self = .underline(children: children())
+            case "del":
+                self = .strikethrough(children: children())
+            case "a":
+                self = .link(destination: htmlNode["href"] ?? "", children: children())
+            case "img":
+                self = .image(source: htmlNode["src"] ?? "", children: [.text(htmlNode["alt"] ?? "")])
+            default:
+                if let style = htmlNode["style"] {
+                    let fontFamily = style.firstMatch(of: #"(?<=font-family:)[^;]+"#)
+                    let fontSize = style.firstMatch(of: #"(?<=font-size:)\d+"#)
+                    let fc = style.firstMatch(of: #"(?<=color:)[^;]+"#)
+                    let bc = style.firstMatch(of: #"(?<=background-color:)[^;]+"#)
+                    let size = fontSize.flatMap { Double($0) }
+                    self = .style(.init(font: fontFamily, size: size.flatMap { CGFloat($0) },
+                                        foregroundColor: fc, backgroundColor: bc),
+                                  children: children())
+                } else {
+                    self = .html(htmlNode.name ?? "", children: children())
+                }
+            }
+        } else {
+            return nil
+        }
+    }
 }
 
 private typealias UnsafeNode = UnsafeMutablePointer<cmark_node>
@@ -211,6 +263,10 @@ extension UnsafeNode {
     Int(cmark_gfm_extensions_get_table_columns(self))
   }
 
+  fileprivate var html: String {
+    String(cString: cmark_render_html(self, CMARK_OPT_UNSAFE | CMARK_OPT_NOBREAKS, nil))
+  }
+    
   fileprivate var tableAlignments: [RawTableColumnAlignment] {
     (0..<self.tableColumns).map { column in
       let ascii = cmark_gfm_extensions_get_table_alignments(self)[column]
@@ -386,8 +442,9 @@ extension UnsafeNode {
       guard let node = cmark_node_new(CMARK_NODE_CODE) else { return nil }
       cmark_node_set_literal(node, content)
       return node
-    case .html(let content):
+    case .html(let content, let children):
       guard let node = cmark_node_new(CMARK_NODE_HTML_INLINE) else { return nil }
+        // FIXME: -
       cmark_node_set_literal(node, content)
       return node
     case .emphasis(let children):
@@ -406,6 +463,10 @@ extension UnsafeNode {
       }
       children.compactMap(UnsafeNode.make).forEach { cmark_node_append_child(node, $0) }
       return node
+    case .underline(let children):
+      guard let node = cmark_node_new(CMARK_NODE_TEXT) else { return nil }
+      children.compactMap(UnsafeNode.make).forEach { cmark_node_append_child(node, $0) }
+      return node
     case .link(let destination, let children):
       guard let node = cmark_node_new(CMARK_NODE_LINK) else { return nil }
       cmark_node_set_url(node, destination)
@@ -414,6 +475,10 @@ extension UnsafeNode {
     case .image(let source, let children):
       guard let node = cmark_node_new(CMARK_NODE_IMAGE) else { return nil }
       cmark_node_set_url(node, source)
+      children.compactMap(UnsafeNode.make).forEach { cmark_node_append_child(node, $0) }
+      return node
+    case .style(_, let children):
+      guard let node = cmark_node_new(CMARK_NODE_TEXT) else { return nil }
       children.compactMap(UnsafeNode.make).forEach { cmark_node_append_child(node, $0) }
       return node
     }

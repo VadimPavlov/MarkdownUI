@@ -5,12 +5,14 @@ enum InlineNode: Hashable {
   case softBreak
   case lineBreak
   case code(String)
-  case html(String)
+  case html(String, children: [InlineNode])
   case emphasis(children: [InlineNode])
   case strong(children: [InlineNode])
   case strikethrough(children: [InlineNode])
+  case underline(children: [InlineNode])
   case link(destination: String, children: [InlineNode])
   case image(source: String, children: [InlineNode])
+  case style(InlineStyle, children: [InlineNode])
 }
 
 extension InlineNode {
@@ -23,10 +25,16 @@ extension InlineNode {
         return children
       case .strikethrough(let children):
         return children
+      case .underline(let children):
+          return children
       case .link(_, let children):
         return children
       case .image(_, let children):
         return children
+      case .html(_, let children):
+          return children
+      case .style(_, let children):
+          return children
       default:
         return []
       }
@@ -49,4 +57,11 @@ extension InlineNode {
       }
     }
   }
+}
+
+struct InlineStyle: Hashable {
+    let font: String?
+    let size: CGFloat?
+    let foregroundColor: String?
+    let backgroundColor: String?
 }

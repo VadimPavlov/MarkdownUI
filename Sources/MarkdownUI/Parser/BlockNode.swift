@@ -6,7 +6,7 @@ enum BlockNode: Hashable {
   case numberedList(isTight: Bool, start: Int, items: [RawListItem])
   case taskList(isTight: Bool, items: [RawTaskListItem])
   case codeBlock(fenceInfo: String?, content: String)
-  case htmlBlock(content: String)
+  case htmlBlock(content: [InlineNode])
   case paragraph(content: [InlineNode])
   case heading(level: Int, content: [InlineNode])
   case table(columnAlignments: [RawTableColumnAlignment], rows: [RawTableRow])
