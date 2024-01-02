@@ -1,4 +1,6 @@
 import Foundation
+import UIKit
+
 @_implementationOnly import cmark_gfm
 
 extension Array where Element == BlockNode {
@@ -62,11 +64,11 @@ extension BlockNode {
         let doc = HTMLDocument(string: unsafeNode.html)?.body
         self = .htmlBlock(content: doc?.children.compactMap(InlineNode.init(htmlNode:)) ?? [])
     case .paragraph:
-        self = .paragraph(content: Self.inlines(unsafeNode: unsafeNode))
+        self = .paragraph(content: Array.inlines(unsafeNode: unsafeNode))
     case .heading:
       self = .heading(
         level: unsafeNode.headingLevel,
-        content: unsafeNode.children.compactMap(InlineNode.init(unsafeNode:))
+        content: Array.inlines(unsafeNode: unsafeNode)
       )
     case .table:
       self = .table(
@@ -80,7 +82,9 @@ extension BlockNode {
       return nil
     }
   }
-    
+}
+
+extension Array where Element == InlineNode {
     static fileprivate func inlines(unsafeNode: UnsafeNode) -> [InlineNode] {
         let children = unsafeNode.children
         if children.contains(where: { $0.nodeType == .html }) {
@@ -130,7 +134,7 @@ extension RawTableCell {
     guard unsafeNode.nodeType == .tableCell else {
       fatalError("Expected a table cell but got a '\(unsafeNode.nodeType)' instead.")
     }
-    self.init(content: unsafeNode.children.compactMap(InlineNode.init(unsafeNode:)))
+    self.init(content: Array.inlines(unsafeNode: unsafeNode))
   }
 }
 
@@ -148,11 +152,11 @@ extension InlineNode {
     case .html:
       self = .html(unsafeNode.literal ?? "", children: [])
     case .emphasis:
-      self = .emphasis(children: unsafeNode.children.compactMap(InlineNode.init(unsafeNode:)))
+      self = .emphasis(children: Array.inlines(unsafeNode: unsafeNode))
     case .strong:
-      self = .strong(children: unsafeNode.children.compactMap(InlineNode.init(unsafeNode:)))
+      self = .strong(children: Array.inlines(unsafeNode: unsafeNode))
     case .strikethrough:
-      self = .strikethrough(children: unsafeNode.children.compactMap(InlineNode.init(unsafeNode:)))
+      self = .strikethrough(children: Array.inlines(unsafeNode: unsafeNode))
     case .link:
       self = .link(
         destination: unsafeNode.url ?? "",
@@ -184,12 +188,24 @@ extension InlineNode {
                 self = .underline(children: children())
             case "del":
                 self = .strikethrough(children: children())
+            case "sub":
+                self = .subscript(children())
+            case "sup":
+                self = .superscript(children())
             case "a":
                 self = .link(destination: htmlNode["href"] ?? "", children: children())
             case "img":
                 self = .image(source: htmlNode["src"] ?? "", children: [.text(htmlNode["alt"] ?? "")])
+            case "center":
+                self = .style(.init(alignment: .center), children: children())
+            case "font":
+                let face = htmlNode["face"]
+                let color = htmlNode["color"]
+                let size = htmlNode["size"].flatMap { Double($0) }.flatMap { CGFloat($0) * UIFont.systemFontSize/3 }
+                self = .style(.init(font: face, size: size?.rounded(.up), foregroundColor: color, backgroundColor: nil), children: children())
             default:
                 if let style = htmlNode["style"] {
+                    print("STYLE: \(style)")
                     let fontFamily = style.firstMatch(of: #"(?<=font-family:)[^;]+"#)
                     let fontSize = style.firstMatch(of: #"(?<=font-size:)\d+"#)
                     let fc = style.firstMatch(of: #"(?<=color:)[^;]+"#)
@@ -467,6 +483,14 @@ extension UnsafeNode {
       guard let node = cmark_node_new(CMARK_NODE_TEXT) else { return nil }
       children.compactMap(UnsafeNode.make).forEach { cmark_node_append_child(node, $0) }
       return node
+    case .subscript(let children):
+      guard let node = cmark_node_new(CMARK_NODE_TEXT) else { return nil }
+      children.compactMap(UnsafeNode.make).forEach { cmark_node_append_child(node, $0) }
+      return node
+    case .superscript(let children):
+      guard let node = cmark_node_new(CMARK_NODE_TEXT) else { return nil }
+      children.compactMap(UnsafeNode.make).forEach { cmark_node_append_child(node, $0) }
+      return node
     case .link(let destination, let children):
       guard let node = cmark_node_new(CMARK_NODE_LINK) else { return nil }
       cmark_node_set_url(node, destination)
@@ -543,5 +567,13 @@ private struct UnsafeNodeSequence: Sequence {
 
   func makeIterator() -> Iterator {
     .init(self.node)
+  }
+}
+
+extension String {
+  func spaceNormalized() -> String {
+    self.trimmingCharacters(in: .whitespaces)
+      .components(separatedBy: .whitespacesAndNewlines)
+      .joined(separator: " ")
   }
 }

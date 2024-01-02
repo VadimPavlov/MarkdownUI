@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 enum InlineNode: Hashable {
   case text(String)
@@ -10,6 +11,8 @@ enum InlineNode: Hashable {
   case strong(children: [InlineNode])
   case strikethrough(children: [InlineNode])
   case underline(children: [InlineNode])
+  case `subscript`([InlineNode])
+  case superscript([InlineNode])
   case link(destination: String, children: [InlineNode])
   case image(source: String, children: [InlineNode])
   case style(InlineStyle, children: [InlineNode])
@@ -26,6 +29,10 @@ extension InlineNode {
       case .strikethrough(let children):
         return children
       case .underline(let children):
+          return children
+      case .subscript(let children):
+          return children
+      case .superscript(let children):
           return children
       case .link(_, let children):
         return children
@@ -60,8 +67,9 @@ extension InlineNode {
 }
 
 struct InlineStyle: Hashable {
-    let font: String?
-    let size: CGFloat?
-    let foregroundColor: String?
-    let backgroundColor: String?
+    var font: String?
+    var size: CGFloat?
+    var alignment: NSTextAlignment?
+    var foregroundColor: String?
+    var backgroundColor: String?
 }
