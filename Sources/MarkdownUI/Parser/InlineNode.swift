@@ -68,7 +68,7 @@ extension InlineNode {
 
 struct InlineStyle: Hashable {
     var font: String?
-    var size: CGFloat?
+    var size: String?
     var alignment: NSTextAlignment?
     var foregroundColor: String?
     var backgroundColor: String?

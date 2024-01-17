@@ -92,26 +92,12 @@ private struct AttributedStringInlineRenderer {
     }
     
     private mutating func renderHTML(_ node: String, children: [InlineNode]) {
+                
         let savedAttributes = self.attributes
-        switch node {
-        case "u", "ins":
-            self.renderUnderline(children: children)
-        default:
-            for child in children {
-                self.render(child)
-            }
+        for child in children {
+            self.render(child)
         }
-        
         self.attributes = savedAttributes
-        //    let tag = HTMLTag(html)
-        //
-        //    switch tag?.name.lowercased() {
-        //    case "br":
-        //      self.renderLineBreak()
-        //      self.shouldSkipNextWhitespace = true
-        //    default:
-        //      self.renderText(html)
-        //    }
     }
     
     private mutating func renderEmphasis(children: [InlineNode]) {
@@ -203,32 +189,54 @@ private struct AttributedStringInlineRenderer {
     let savedAttributes = self.attributes
     
     if let font = style.font {
-        self.attributes.fontProperties?.family = .custom(font)
+        attributes.fontProperties?.family = .custom(font)
     }
       
-    if let size = style.size {
-      self.attributes.fontProperties?.size = size
+    if let html = style.size {
+        
+        var relative: RelativeSize?
+        
+        if let scale = Double.from(html: html) {
+            self.attributes.fontProperties?.scale = scale
+        } else if let percent = html.firstMatch(of: #"\d+(?=%)"#), let scale = Double(percent) {
+            self.attributes.fontProperties?.scale = scale / 100
+        } else if let pixels = html.firstMatch(of: #"\d+(?=px)"#), let size = Double(pixels) {
+            self.attributes.fontProperties?.size = size
+        } else if let rem = html.firstMatch(of: #"(\d*[.])?\d+(?=rem)"#), let value = Double(rem) {
+            relative = .rem(value)
+        } else if let em = html.firstMatch(of: #"(\d*[.])?\d+(?=em)"#), let value = Double(em) {
+            relative = .em(value)
+        } else if let ex = html.firstMatch(of: #"(\d*[.])?\d+(?=ex)"#), let value = Double(ex) {
+            print(value)
+            //relative = .ex(value)
+        }
+        
+        if let size = relative?.points(relativeTo: attributes.fontProperties) {
+            attributes.fontProperties?.size = size
+        } else if let scale = Double(html) {
+            attributes.fontProperties?.scale = scale / 3
+        }
     }
       
     if let html = style.foregroundColor, let color = Color.from(html: html) {
-      self.attributes.foregroundColor = color
+      attributes.foregroundColor = color
     }
       
     if let html = style.backgroundColor, let color = Color.from(html: html) {
-      self.attributes.backgroundColor = color
+      attributes.backgroundColor = color
     }
       
+    /* Not supported yet
     if let alignment = style.alignment {
-      // Not supported yet
       let p = NSMutableParagraphStyle()
       p.alignment = alignment
-      self.attributes.paragraphStyle = p
-    }
+      attributes.paragraphStyle = p
+    }*/
       
     for child in children {
       self.render(child)
     }
-
+            
     self.attributes = savedAttributes
   }
 }
@@ -257,13 +265,4 @@ extension AttributeContainer {
         properties?.size = size.points(relativeTo: self.fontProperties)
         self.fontProperties = properties
     }
-
-//    public var `subscript`: Self {
-//        baselineOffset(.em(-0.25), size: .em(0.75))
-//    }
-//    
-//
-//    public func baselineOffset(_ baselineOffset: RelativeSize, size: RelativeSize) -> Self {
-//        self.baselineOffset = baselineOffset.points(relativeTo: self.fontProperties)
-//    }
 }

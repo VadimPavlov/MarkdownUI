@@ -1,6 +1,6 @@
 import SwiftUI
 
-extension Color {
+public extension Color {
     
     static func from(html: String) -> Color? {
         guard !html.isEmpty else { return nil }

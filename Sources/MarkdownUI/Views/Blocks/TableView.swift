@@ -10,7 +10,7 @@ struct TableView: View {
 
   init(columnAlignments: [RawTableColumnAlignment], rows: [RawTableRow]) {
     self.columnAlignments = columnAlignments
-    self.rows = rows
+      self.rows = rows
   }
 
   var body: some View {

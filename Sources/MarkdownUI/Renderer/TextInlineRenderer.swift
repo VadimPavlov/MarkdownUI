@@ -6,7 +6,7 @@ extension Sequence where Element == InlineNode {
     textStyles: InlineTextStyles,
     images: [String: Image],
     attributes: AttributeContainer
-  ) -> Text {
+  ) -> some View {
     var renderer = TextInlineRenderer(
       baseURL: baseURL,
       textStyles: textStyles,
@@ -19,7 +19,8 @@ extension Sequence where Element == InlineNode {
 }
 
 private struct TextInlineRenderer {
-  var result = Text("")
+  var text = Text("")
+  var body: [AnyView] = []
 
   private let baseURL: URL?
   private let textStyles: InlineTextStyles
@@ -38,6 +39,14 @@ private struct TextInlineRenderer {
     self.images = images
     self.attributes = attributes
   }
+    
+    // workaround to render text with alignment
+    var result: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(body.enumerated()), id: \.offset) { $1 }
+            text
+        }
+    }
 
   mutating func render<S: Sequence>(_ inlines: S) where S.Element == InlineNode {
     for inline in inlines {
@@ -79,26 +88,36 @@ private struct TextInlineRenderer {
     }
   }
 
-    private mutating func renderHTML(_ node: String, children: [InlineNode]) {                        
-//    let tag = HTMLTag(html)
-//    switch tag?.name.lowercased() {
-//    case "br":
-//      self.defaultRender(.lineBreak)
-//      self.shouldSkipNextWhitespace = true
-//    default:
-        self.defaultRender(.html(node, children: children))
-//    }
+    private mutating func renderHTML(_ node: String, children: [InlineNode]) {
+        
+        switch node {
+        case "center":
+            body.append(AnyView(self.text))
+            let inline = InlineNode.html(node, children: children)
+            let text = Text(inline.renderAttributedString(
+                  baseURL: self.baseURL,
+                  textStyles: self.textStyles,
+                  attributes: self.attributes
+                )
+            )
+            .frame(maxWidth: .infinity, alignment: .center)
+            .multilineTextAlignment(.center)
+            body.append(AnyView(text))
+            self.text = Text("")
+        default:
+            self.defaultRender(.html(node, children: children))
+        }
   }
 
   private mutating func renderImage(_ source: String) {
     if let image = self.images[source] {
-      self.result = self.result + Text(image)
+      self.text = self.text + Text(image)
     }
   }
 
   private mutating func defaultRender(_ inline: InlineNode) {
-    self.result =
-      self.result
+    self.text =
+      self.text
       + Text(
         inline.renderAttributedString(
           baseURL: self.baseURL,

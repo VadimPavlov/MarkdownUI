@@ -88,8 +88,10 @@ extension Array where Element == InlineNode {
     static fileprivate func inlines(unsafeNode: UnsafeNode) -> [InlineNode] {
         let children = unsafeNode.children
         if children.contains(where: { $0.nodeType == .html }) {
-            if let doc = HTMLDocument(string: unsafeNode.html)?.body?.children.first {
-                return doc.children.compactMap(InlineNode.init(htmlNode:))
+            let body = HTMLDocument(string: unsafeNode.html)?.body
+            //let node = body?.children.count == 1 ? body?.children.first : body
+            if let body {
+                return body.children.compactMap(InlineNode.init(htmlNode:))
             } else {
                 return []
             }
@@ -160,12 +162,12 @@ extension InlineNode {
     case .link:
       self = .link(
         destination: unsafeNode.url ?? "",
-        children: unsafeNode.children.compactMap(InlineNode.init(unsafeNode:))
+        children: Array.inlines(unsafeNode: unsafeNode)
       )
     case .image:
       self = .image(
         source: unsafeNode.url ?? "",
-        children: unsafeNode.children.compactMap(InlineNode.init(unsafeNode:))
+        children: Array.inlines(unsafeNode: unsafeNode)
       )
     default:
       assertionFailure("Unhandled node type '\(unsafeNode.nodeType)' in InlineNode.")
@@ -186,8 +188,10 @@ extension InlineNode {
                 self = .emphasis(children: children())
             case "u", "ins":
                 self = .underline(children: children())
-            case "del":
+            case "s", "del":
                 self = .strikethrough(children: children())
+            case "code":
+                self = .code(htmlNode.content ?? "")
             case "sub":
                 self = .subscript(children())
             case "sup":
@@ -195,23 +199,25 @@ extension InlineNode {
             case "a":
                 self = .link(destination: htmlNode["href"] ?? "", children: children())
             case "img":
-                self = .image(source: htmlNode["src"] ?? "", children: [.text(htmlNode["alt"] ?? "")])
+                self = .image(source: htmlNode["src"]?.trimmingCharacters(in: .init(charactersIn: "'")) ?? "",
+                              children: [.text(htmlNode["alt"] ?? "")])
+                /*
             case "center":
                 self = .style(.init(alignment: .center), children: children())
+                 */
             case "font":
                 let face = htmlNode["face"]
                 let color = htmlNode["color"]
-                let size = htmlNode["size"].flatMap { Double($0) }.flatMap { CGFloat($0) * UIFont.systemFontSize/3 }
-                self = .style(.init(font: face, size: size?.rounded(.up), foregroundColor: color, backgroundColor: nil), children: children())
+                let size = htmlNode["size"]
+                self = .style(.init(font: face, size: size, foregroundColor: color, backgroundColor: nil), children: children())
             default:
                 if let style = htmlNode["style"] {
                     print("STYLE: \(style)")
-                    let fontFamily = style.firstMatch(of: #"(?<=font-family:)[^;]+"#)
-                    let fontSize = style.firstMatch(of: #"(?<=font-size:)\d+"#)
                     let fc = style.firstMatch(of: #"(?<=color:)[^;]+"#)
                     let bc = style.firstMatch(of: #"(?<=background-color:)[^;]+"#)
-                    let size = fontSize.flatMap { Double($0) }
-                    self = .style(.init(font: fontFamily, size: size.flatMap { CGFloat($0) },
+                    let fontFamily = style.firstMatch(of: #"(?<=font-family:'?)[^;']+"#)
+                    let fontSize = style.firstMatch(of: #"(?<=font-size:)[^;]+"#)
+                    self = .style(.init(font: fontFamily, size: fontSize,
                                         foregroundColor: fc, backgroundColor: bc),
                                   children: children())
                 } else {
