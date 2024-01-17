@@ -8,6 +8,10 @@
   final class MarkdownTests: XCTestCase {
     private let layout = SwiftUISnapshotLayout.device(config: .iPhone8)
 
+    override func setUpWithError() throws {
+      try XCTSkipIf(UIDevice.current.userInterfaceIdiom == .pad, "Skipping on Mac Catalyst")
+    }
+
     func testBlockquote() {
       let view = Markdown {
         #"""
@@ -34,7 +38,7 @@
       .border(Color.accentColor)
       .padding()
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testCodeBlock() {
@@ -60,7 +64,7 @@
       .border(Color.accentColor)
       .padding()
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testVerbatimHTML() {
@@ -79,7 +83,7 @@
       .border(Color.accentColor)
       .padding()
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testOpenCodeBlock() {
@@ -93,7 +97,7 @@
       .border(Color.accentColor)
       .padding()
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testParagraphs() {
@@ -111,7 +115,7 @@
       .border(Color.accentColor)
       .padding()
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testCenteredParagraphs() {
@@ -130,7 +134,7 @@
       .padding()
       .multilineTextAlignment(.center)
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testTrailingParagraphs() {
@@ -149,7 +153,7 @@
       .padding()
       .multilineTextAlignment(.trailing)
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testSpacing() {
@@ -171,7 +175,7 @@
           .markdownMargin(bottom: .zero)
       }
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testHeadings() {
@@ -194,7 +198,7 @@
       .border(Color.accentColor)
       .padding()
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testThematicBreak() {
@@ -220,7 +224,7 @@
       .border(Color.accentColor)
       .padding()
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testInlines() {
@@ -250,7 +254,7 @@
       .border(Color.accentColor)
       .padding()
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testInlinesStyling() {
@@ -294,7 +298,7 @@
         UnderlineStyle(.init(pattern: .dot))
       }
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
   }
 #endif

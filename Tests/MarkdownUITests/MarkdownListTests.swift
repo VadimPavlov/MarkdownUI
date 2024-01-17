@@ -8,6 +8,10 @@
   final class MarkdownListTests: XCTestCase {
     private let layout = SwiftUISnapshotLayout.device(config: .iPhone8)
 
+    override func setUpWithError() throws {
+      try XCTSkipIf(UIDevice.current.userInterfaceIdiom == .pad, "Skipping on Mac Catalyst")
+    }
+
     func testTaskList() {
       let view = Markdown {
         #"""
@@ -19,7 +23,7 @@
       .border(Color.accentColor)
       .padding()
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testBulletedList() {
@@ -36,7 +40,7 @@
       .border(Color.accentColor)
       .padding()
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testBulletedDashedList() {
@@ -54,7 +58,7 @@
       .padding()
       .markdownBulletedListMarker(.dash)
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testNumberedList() {
@@ -81,7 +85,7 @@
       .border(Color.accentColor)
       .padding()
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testRomanNumberedList() {
@@ -103,7 +107,7 @@
       .padding()
       .markdownNumberedListMarker(.lowerRoman)
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
 
     func testLooseList() {
@@ -129,7 +133,7 @@
       .border(Color.accentColor)
       .padding()
 
-      assertSnapshot(matching: view, as: .image(layout: layout))
+      assertSnapshot(of: view, as: .image(layout: layout))
     }
   }
 
