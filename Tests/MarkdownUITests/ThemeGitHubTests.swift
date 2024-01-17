@@ -9,6 +9,10 @@
     private let layout = SwiftUISnapshotLayout.device(config: .iPhone8)
     private let perceptualPrecision: Float = 0.97
 
+    override func setUpWithError() throws {
+      try XCTSkipIf(UIDevice.current.userInterfaceIdiom == .pad, "Skipping on Mac Catalyst")
+    }
+
     func testInlines() {
       let view = ThemePreview(theme: .gitHub) {
         #"""
@@ -26,7 +30,7 @@
         """#
       }
       assertSnapshot(
-        matching: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
+        of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
       )
     }
 
@@ -49,7 +53,7 @@
         """#
       }
       assertSnapshot(
-        matching: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
+        of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
       )
     }
 
@@ -65,7 +69,7 @@
         """#
       }
       assertSnapshot(
-        matching: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
+        of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
       )
     }
 
@@ -82,7 +86,7 @@
         """#
       }
       assertSnapshot(
-        matching: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
+        of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
       )
     }
 
@@ -97,7 +101,7 @@
         """#
       }
       assertSnapshot(
-        matching: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
+        of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
       )
     }
 
@@ -119,7 +123,7 @@
         """#
       }
       assertSnapshot(
-        matching: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
+        of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
       )
     }
 
@@ -133,7 +137,7 @@
         """#
       }
       assertSnapshot(
-        matching: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
+        of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
       )
     }
 
@@ -159,7 +163,7 @@
         """#
       }
       assertSnapshot(
-        matching: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
+        of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
       )
     }
 
@@ -180,7 +184,7 @@
         """#
       }
       assertSnapshot(
-        matching: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
+        of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
       )
     }
 
@@ -195,7 +199,7 @@
         """#
       }
       assertSnapshot(
-        matching: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
+        of: view, as: .image(perceptualPrecision: perceptualPrecision, layout: layout)
       )
     }
   }
