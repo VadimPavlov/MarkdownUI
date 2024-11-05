@@ -212,7 +212,6 @@ extension InlineNode {
                 self = .style(.init(font: face, size: size, foregroundColor: color, backgroundColor: nil), children: children())
             default:
                 if let style = htmlNode["style"] {
-                    print("STYLE: \(style)")
                     let fc = style.firstMatch(of: #"(?<=color:)[^;]+"#)
                     let bc = style.firstMatch(of: #"(?<=background-color:)[^;]+"#)
                     let fontFamily = style.firstMatch(of: #"(?<=font-family:'?)[^;']+"#)
