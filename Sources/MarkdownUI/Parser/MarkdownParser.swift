@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 
 @_implementationOnly import cmark_gfm
+@_implementationOnly import cmark_gfm_extensions
 
 extension Array where Element == BlockNode {
   init(markdown: String) {
@@ -394,7 +395,7 @@ extension UnsafeNode {
       return node
     case .table(let columnAlignments, let rows):
       guard let table = cmark_find_syntax_extension("table"),
-        let node = cmark_node_new_with_ext(CMARK_NODE_TABLE, table)
+        let node = cmark_node_new_with_ext(ExtensionNodeTypes.shared.CMARK_NODE_TABLE, table)
       else {
         return nil
       }
@@ -431,7 +432,7 @@ extension UnsafeNode {
 
   fileprivate static func make(_ tableRow: RawTableRow) -> UnsafeNode? {
     guard let table = cmark_find_syntax_extension("table"),
-      let node = cmark_node_new_with_ext(CMARK_NODE_TABLE_ROW, table)
+      let node = cmark_node_new_with_ext(ExtensionNodeTypes.shared.CMARK_NODE_TABLE_ROW, table)
     else {
       return nil
     }
@@ -441,7 +442,7 @@ extension UnsafeNode {
 
   fileprivate static func make(_ tableCell: RawTableCell) -> UnsafeNode? {
     guard let table = cmark_find_syntax_extension("table"),
-      let node = cmark_node_new_with_ext(CMARK_NODE_TABLE_CELL, table)
+      let node = cmark_node_new_with_ext(ExtensionNodeTypes.shared.CMARK_NODE_TABLE_CELL, table)
     else {
       return nil
     }
@@ -478,7 +479,8 @@ extension UnsafeNode {
       return node
     case .strikethrough(let children):
       guard let strikethrough = cmark_find_syntax_extension("strikethrough"),
-        let node = cmark_node_new_with_ext(CMARK_NODE_STRIKETHROUGH, strikethrough)
+        let node = cmark_node_new_with_ext(
+          ExtensionNodeTypes.shared.CMARK_NODE_STRIKETHROUGH, strikethrough)
       else {
         return nil
       }
@@ -576,9 +578,39 @@ private struct UnsafeNodeSequence: Sequence {
 }
 
 extension String {
-  func spaceNormalized() -> String {
-    self.trimmingCharacters(in: .whitespaces)
-      .components(separatedBy: .whitespacesAndNewlines)
-      .joined(separator: " ")
+    func spaceNormalized() -> String {
+        self.trimmingCharacters(in: .whitespaces)
+            .components(separatedBy: .whitespacesAndNewlines)
+            .joined(separator: " ")
+    }
+}
+// Extension node types are not exported in `cmark_gfm_extensions`,
+// so we need to look for them in the symbol table
+private struct ExtensionNodeTypes {
+  let CMARK_NODE_TABLE: cmark_node_type
+  let CMARK_NODE_TABLE_ROW: cmark_node_type
+  let CMARK_NODE_TABLE_CELL: cmark_node_type
+  let CMARK_NODE_STRIKETHROUGH: cmark_node_type
+
+  static let shared = ExtensionNodeTypes()
+
+  private init() {
+    func findNodeType(_ name: String, in handle: UnsafeMutableRawPointer!) -> cmark_node_type? {
+      guard let symbol = dlsym(handle, name) else {
+        return nil
+      }
+      return symbol.assumingMemoryBound(to: cmark_node_type.self).pointee
+    }
+
+    let handle = dlopen(nil, RTLD_LAZY)
+
+    self.CMARK_NODE_TABLE = findNodeType("CMARK_NODE_TABLE", in: handle) ?? CMARK_NODE_NONE
+    self.CMARK_NODE_TABLE_ROW = findNodeType("CMARK_NODE_TABLE_ROW", in: handle) ?? CMARK_NODE_NONE
+    self.CMARK_NODE_TABLE_CELL =
+      findNodeType("CMARK_NODE_TABLE_CELL", in: handle) ?? CMARK_NODE_NONE
+    self.CMARK_NODE_STRIKETHROUGH =
+      findNodeType("CMARK_NODE_STRIKETHROUGH", in: handle) ?? CMARK_NODE_NONE
+
+    dlclose(handle)
   }
 }
